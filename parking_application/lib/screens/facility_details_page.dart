@@ -245,7 +245,7 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
                               showTitles: true,
                               reservedSize: 30,
                               getTitlesWidget: (value, meta) {
-                                if (value.toInt() < predictions.length){
+                                if (value.toInt() % 4 == 0 && value.toInt() < predictions.length){
                                   return Padding(padding: const EdgeInsets.only(top: 8,), child: Text(predictions[value.toInt()]['time'], style: const TextStyle(color: Colors.grey, fontSize: 10,),),);
                                 }
                                 return const SizedBox();

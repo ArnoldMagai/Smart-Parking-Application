@@ -55,8 +55,10 @@ class LandingPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _buildFeatureIcon(Icons.bolt, 'FAST'),
-                      const SizedBox(width: 32),
+                      const SizedBox(width: 24),
                       _buildFeatureIcon(Icons.shield, 'SECURE'),
+                      const SizedBox(width: 24),
+                      _buildFeatureIcon(Icons.psychology, 'SMART'),
                     ],
                   ),
                   
@@ -65,7 +67,7 @@ class LandingPage extends StatelessWidget {
                     onPressed: () => Navigator.pushNamed(context, '/driver/login'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red[600],
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     child: Row(
@@ -73,15 +75,15 @@ class LandingPage extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-                          child: const Icon(Icons.person, color: Colors.white),
+                          child: const Icon(Icons.local_parking, color: Colors.white, size: 28,),
                         ),
                         const SizedBox(width: 16),
                         const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Enter as Driver', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                              Text('Find your spot', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                              Text('Find Parking', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                              Text('Locate available parking spots in real time', style: TextStyle(fontSize: 13, color: Colors.white70)),
                             ],
                           ),
                         ),
@@ -89,37 +91,11 @@ class LandingPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    // Added Manager Login Route
-                    onPressed: () => Navigator.pushNamed(context, '/manager/login-page'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.surface,
-                      padding: const EdgeInsets.all(20),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-                          child: const Icon(Icons.business, color: Colors.white),
-                        ),
-                        const SizedBox(width: 16),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Facility Manager', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                              Text('Manage your lot', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right, color: Colors.white),
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 20),
+                const Text(
+                  '© 2024 Smart Parking. All rights reserved.',
+                  style: TextStyle(color: Colors.white38, fontSize: 11),
+                ),
                 ],
               ),
             ),

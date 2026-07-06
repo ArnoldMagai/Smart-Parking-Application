@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'activity_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 
 
@@ -15,8 +18,16 @@ class DriverHomePage extends StatefulWidget {
 
 class _DriverHomePageState extends State<DriverHomePage> {
   int _selectedIndex = 0;
+  bool isMapView = false;
   List<Map<String, dynamic>> activityHistory = [];
+  List<LatLng> routePoints = [];
   String currentLocation = "Detecting Location...";
+  String trafficStatus = "Normal";
+  double? currentLatitude;
+  double? currentLongitude;
+  double? routeDistance;
+  double? routeDuration;
+  final MapController mapController = MapController();
 
   Future<void> getCurrentLocation() async {
     bool serviceEnabled;
@@ -39,7 +50,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
       });
       return;
     }
-    Position position = await Geolocator.getCurrentPosition();
+    Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high,);
+    currentLatitude = position.latitude;
+    currentLongitude = position.longitude;
 
     final response = await http.get(
       Uri.parse(
@@ -105,6 +118,70 @@ class _DriverHomePageState extends State<DriverHomePage> {
     
     }
   }
+
+  Future<void> getRoute(double destinationLat, double destinationLng,) async {
+    final url = 'http://router.project-osrm.org/route/v1/driving/''$currentLongitude,$currentLatitude;''$destinationLng,$destinationLat''?overview=full&geometries=geojson';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      if (data['routes'] == null || data['routes'].isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No route found')),
+        );
+        return;
+      }
+      final coordinates = data['routes'][0]['geometry']['coordinates'];
+      List<LatLng> points = [];
+      for (var coord in coordinates) {
+        points.add(LatLng(coord[1], coord[0]));
+      }
+      setState((){
+        routePoints = points;
+        routeDistance = data['routes'][0]['distance'] / 1000; // Convert to km
+        routeDuration = data['routes'][0]['duration'] / 60; // Convert to minutes
+        DateTime now = DateTime.now();
+        int hour= now.hour;
+
+        double trafficFactor;
+        if ((hour >= 6 && hour <= 9)) {
+          //Morning rush hour
+          trafficFactor = 2.0;
+          trafficStatus = "Morning Traffic";
+        } else if ((hour >= 10 && hour <= 15)) {
+          //Daytime traffic
+          trafficFactor = 1.5;
+          trafficStatus = "Moderate Traffic";
+        } else if ((hour >= 16 && hour <= 19)) {
+          //Evening rush hour
+          trafficFactor = 2.2;
+          trafficStatus = "Heavy Traffic";  
+        } else {
+          //NightTraffic
+          trafficFactor = 1.2;
+          trafficStatus = "Light Traffic";
+        }
+        // Use the already computed routeDuration as the base duration (in minutes)
+        // routeDuration may be nullable, fall back to 0.0 if null
+        double baseDuration = routeDuration ?? 0.0;
+        routeDuration = baseDuration * trafficFactor;
+      });
+      if (points.isNotEmpty) {
+        mapController.fitCamera(
+          CameraFit.bounds(bounds: LatLngBounds.fromPoints(points), padding: const EdgeInsets.all(60),),
+        );
+      }
+    }
+  }
+
+  Future<void> openGoogleMaps(double latitude, double longitude,) async {
+    final Uri url = Uri.parse('https://www.google.com/maps/dir/?api=1''&destination=$latitude,$longitude''&travelmode=driving');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication,);
+    }
+  }
+
 
   void _onItemTapped(int index) {
     if (index == 1) {
@@ -173,11 +250,264 @@ class _DriverHomePageState extends State<DriverHomePage> {
                 ),
               ),
             ),
+
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child:GestureDetector(
+                        onTap: () {
+                          setState (() {
+                            isMapView = false;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: !isMapView ? Colors.red : Colors.transparent,
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Center(
+                            child: Text(
+                              'List View',
+                              style: TextStyle(
+                                color: !isMapView ? Colors.white : Colors.grey,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            isMapView = true;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isMapView ? Colors.red : Colors.transparent,
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Center(
+                            child: Text(
+                              'Map View',
+                              style: TextStyle(
+                                color: isMapView ? Colors.white : Colors.grey,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ),
+
+
             const SizedBox(height: 16),
             Expanded(
-              child: facilities.isEmpty
+              child: isMapView
+                  ? Stack(
+                      children: [
+                        FlutterMap(
+                          mapController: mapController,
+                          options: const MapOptions(
+                          initialCenter: LatLng(-6.7924, 39.2083),
+                          initialZoom: 12,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName:
+                              'com.example.smart_parking',
+                        ),
+                        if (routePoints.isNotEmpty)
+                          PolylineLayer(polylines: [Polyline(points: routePoints, strokeWidth: 5, color: Colors.blue)],),
+                        MarkerLayer(
+                          markers: [
+                            if (currentLatitude != null && currentLongitude != null)
+                              Marker(
+                                point: LatLng(currentLatitude!, currentLongitude!),
+                                width: 80,
+                                height: 80,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withValues(alpha: 0.7),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 3),
+                                  ),
+                                ),
+                              ),
+                            ...facilities
+                              .where(
+                                (facility) =>
+                                facility['latitude'] != null &&
+                                facility['longitude'] != null &&
+                                facility['latitude'] != 0.0 &&
+                                facility['longitude'] != 0.0,
+                              )
+                              .map<Marker>(
+                                (facility) => Marker(
+                                  point: LatLng(
+                                    facility['latitude'],
+                                    facility['longitude'],
+                                  ),
+                                  width: 80,
+                                  height: 80,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (_) => AlertDialog(
+                                          title: Text(facility['name']),
+                                          content: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.location_on, color: Colors.red, size: 18),
+                                                  const SizedBox(width: 6),
+                                                  Expanded(child: Text(facility['location'])),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.local_parking,
+                                                    color: Colors.green,
+                                                    size: 18,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text('${facility['total_slots']} Slots'),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                              },
+                                              child: const Text('Close'),
+                                            ),
+                                            ElevatedButton.icon(
+                                              icon: const Icon(Icons.navigation),
+                                              label: const Text('Navigate'),
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                                getRoute(
+                                                  facility['latitude'],
+                                                  facility['longitude'],
+                                                );
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                    child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                            ],
+                        )
+                      ],
+                    ),
+                   if (routePoints.isNotEmpty)
+                     Positioned(
+                       top: 15,
+                       left: 15,
+                       right: 15,
+                       child: Container(
+                         padding: const EdgeInsets.all(12),
+                         decoration: BoxDecoration(
+                           color: Colors.black87,
+                           borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Distance',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${routeDistance?.toStringAsFixed(2) ?? '0.00'} km',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                width: 1,
+                                height: 30,
+                                color: Colors.white24,
+                              ),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'ETA',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                 ),
+                                 const SizedBox(height: 5),
+                                 Text(
+                                   trafficStatus,
+                                   style: const TextStyle(
+                                     color: Colors.orange,
+                                      fontWeight: FontWeight.bold,
+                                     fontSize: 12,
+                                   ),
+                                 ),
+                                 Text(
+                                   '${routeDuration?.toStringAsFixed(0) ?? '0'} min',
+                                   style: const TextStyle(
+                                     color: Colors.white,
+                                     fontWeight: FontWeight.bold,
+                                     fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      
+                    ],
+                  )
+                  : facilities.isEmpty
                 ? const Center(child: Text('No parking facility registered in the entered location',),)
-                :ListView.builder(
+                : ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 itemCount: facilities.length,
                 itemBuilder: (context, index) {
