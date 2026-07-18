@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'dart:async';
 
 class FacilityDetailsPage extends StatefulWidget {
   const FacilityDetailsPage({Key? key}) : super(key: key);
@@ -32,19 +33,23 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
   Map<String, dynamic>? facilityDetails;
   bool loading = true;
   List<Map<String, dynamic>> predictions = [];
+  Timer? refreshTimer;
 
   Future<void> fetchFacilityDetails() async {
       final response = await http.get(Uri.parse('http://127.0.0.1:8000/api/facilities/${facility!['id']}/?day=$selectedDay'),);
+      print("STATUS CODE = ${response.statusCode}");
+      print("RESPONSE BODY = ${response.body}");
       if (response.statusCode == 200) {
-        setState(() {
           final data = json.decode(response.body);
+          print("Decoded Data = $data");
+          
+          if (!mounted) return;
           setState(() {
             facilityDetails = data;
             predictions = List<Map<String, dynamic>>.from(data['predictions'],);
+            loading = false;
           });
-          loading = false;
-        });
-      } 
+        } 
     } 
 
   @override
@@ -59,8 +64,21 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
     if (args != null && facility == null) {
       facility = args as Map<String, dynamic>;
       fetchFacilityDetails();
+
+      refreshTimer?.cancel();
+      refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        fetchFacilityDetails();
+      });
+    }
   }
-}
+
+  @override
+  void dispose() {
+    refreshTimer?.cancel();
+    super.dispose();
+  }
+
+
   @override
   Widget build(BuildContext context) {
     if (facility == null) {
@@ -138,24 +156,53 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            Column(
-                              children: [
-                                _buildSlot(true, 'A1'),
-                                const SizedBox(height: 16),
-                                _buildSlot(false, 'B1'),
-                                const SizedBox(height: 16),
-                                _buildSlot(true, 'C1'),
-                              ],
-                            ),
-                            const SizedBox(width: 40), 
-                            Column(
-                              children: [
-                                _buildSlot(false, 'A2'),
-                                const SizedBox(height: 16),
-                                _buildSlot(true, 'B2'),
-                                const SizedBox(height: 16),
-                                _buildSlot(false, 'C2'),
-                              ],
+                            Builder(
+                              builder: (context) {
+                                final List<dynamic> slots = 
+                                    facilityDetails!['slots'] as List<dynamic>? ?? [];
+
+                                if (slots.isEmpty) {
+                                  return const CircularProgressIndicator();
+                                } 
+
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    Column(
+                                      children: [
+                                        _buildSlot(
+                                          slots[0]["status"] == "occupied", "A1",
+                                        ),
+                                        const SizedBox (height:16),
+                                        _buildSlot(
+                                          slots[1]["status"] == "occupied", "B1",
+                                        ),
+                                        const SizedBox(height:16),
+                                        _buildSlot(
+                                          slots[2]["status"] == "occupied", "C1",
+                                        ),
+                                      
+                                      ],
+                                    ),
+                                    const SizedBox(width: 40), // Space between left and right columns
+                                    Column(
+                                      children: [
+                                        _buildSlot(
+                                          slots[3]["status"] == "occupied", "A2",
+                                        ),
+                                        const SizedBox(height:16),
+                                        _buildSlot(
+                                          slots[4]["status"] == "occupied", "B2",
+                                        ),
+                                        const SizedBox(height:16),
+                                        _buildSlot(
+                                          slots[5]["status"] == "occupied", "C2",
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                );  
+                              },
                             ),
                           ],
                         ),
@@ -221,8 +268,9 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
                           touchTooltipData: LineTouchTooltipData(
                             getTooltipItems: (touchedSpots) {
                               return touchedSpots.map((spot){
+                                final hour = predictions[spot.x.toInt()]['time'];
                                 return LineTooltipItem(
-                                 '${spot.y.toInt()}occupied', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold,),
+                                 '$hour\n${spot.y.toInt()}%occupied', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold,),
                                 );
                               }).toList();
                             },
@@ -243,12 +291,16 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
                           bottomTitles: AxisTitles(
                             sideTitles: SideTitles(
                               showTitles: true,
-                              reservedSize: 30,
+                              reservedSize: 35,
+                              interval: 2,
                               getTitlesWidget: (value, meta) {
-                                if (value.toInt() % 4 == 0 && value.toInt() < predictions.length){
-                                  return Padding(padding: const EdgeInsets.only(top: 8,), child: Text(predictions[value.toInt()]['time'], style: const TextStyle(color: Colors.grey, fontSize: 10,),),);
+                                final index = value.toInt();
+                                if (index >=  predictions.length){
+                                  return const SizedBox();
                                 }
-                                return const SizedBox();
+                                final time = predictions[index]['time'];
+                                return Padding(padding: const EdgeInsets.only(top: 8,), child: Text(time, style: const TextStyle(color: Colors.grey, fontSize: 10,),),);
+                                
                               },
                             ),
                           ),
@@ -269,10 +321,11 @@ class _FacilityDetailsPageState extends State<FacilityDetailsPage> {
                           LineChartBarData(
                             spots: List.generate(predictions.length, (index) => FlSpot(index.toDouble(), predictions[index]['occupied'].toDouble(),),),
                             isCurved: true,
+                            curveSmoothness: 0.2,
                             color: Colors.red,
                             barWidth: 2,
                             isStrokeCapRound: true,
-                            dotData: const FlDotData(show: false),
+                            dotData: const FlDotData(show: true,),
                             belowBarData: BarAreaData(
                               show: true,
                               color: Colors.red.withValues(alpha: 0.2),
